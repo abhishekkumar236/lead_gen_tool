@@ -18,6 +18,13 @@ const FREELANCE_SIGNALS = [
 export interface ScoreResult {
   score: number;
   matchedKeywords: string[];
+  /**
+   * Raw keyword weight before the 45-point cap. The classifier ranks sections
+   * by this rather than by `score`: the other four components (freelance
+   * signals, budget, email, recency) are section-independent, so they'd add the
+   * same constant to every candidate and only blur ties.
+   */
+  keywordWeight: number;
 }
 
 /**
@@ -85,5 +92,6 @@ export function scoreLead(
   return {
     score: Math.round(keywordScore + freelanceScore + budgetScore + emailScore + recencyScore),
     matchedKeywords: [...new Set(matched)],
+    keywordWeight: weighted,
   };
 }

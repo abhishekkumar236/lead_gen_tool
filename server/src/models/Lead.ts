@@ -39,6 +39,11 @@ const leadSchema = new Schema(
     budgetText: { type: String, default: '' },
     score: { type: Number, default: 0 },
     matchedKeywords: { type: [String], default: [] },
+    // null = Unsorted. Set by the classifier from section keywords.
+    sectionId: { type: Schema.Types.ObjectId, ref: 'Section', default: null },
+    // Set when the user moves a lead by hand, so re-scrapes and keyword edits
+    // stop reassigning it. Same contract as titleEdited above.
+    sectionLocked: { type: Boolean, default: false },
     status: { type: String, enum: LEAD_STATUSES, default: 'new' },
     notes: { type: [noteSchema], default: [] },
     followUpAt: { type: Date, default: null },
@@ -51,6 +56,7 @@ const leadSchema = new Schema(
 
 leadSchema.index({ source: 1, sourceId: 1 }, { unique: true });
 leadSchema.index({ status: 1, score: -1 });
+leadSchema.index({ sectionId: 1, score: -1 });
 leadSchema.index({ title: 'text', description: 'text', company: 'text' });
 
 export type LeadDoc = InferSchemaType<typeof leadSchema>;

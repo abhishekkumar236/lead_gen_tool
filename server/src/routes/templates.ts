@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { Template } from '../models/Template.js';
 import { Lead } from '../models/Lead.js';
 import { getSettings } from '../models/Settings.js';
@@ -6,21 +7,41 @@ import { buildContext, renderTemplate } from '../services/renderTemplate.js';
 
 export const templatesRouter = Router();
 
-templatesRouter.get('/', async (_req, res) => {
-  res.json(await Template.find().sort('-updatedAt'));
+templatesRouter.get('/', async (req, res) => {
+  // Shared templates (sectionId null) stay visible in every section, so the
+  // active section widens the list rather than narrowing it to nothing.
+  const { section } = req.query as Record<string, string>;
+  const filter =
+    section && section !== 'unsorted' && mongoose.isValidObjectId(section)
+      ? { $or: [{ sectionId: null }, { sectionId: new mongoose.Types.ObjectId(section) }] }
+      : { sectionId: null };
+  res.json(await Template.find(section ? filter : {}).sort('-updatedAt'));
 });
 
 templatesRouter.post('/', async (req, res) => {
-  const { name, subject, body } = req.body ?? {};
+  const { name, subject, body, sectionId } = req.body ?? {};
   if (!name || !body) return res.status(400).json({ error: 'name and body required' });
-  res.status(201).json(await Template.create({ name, subject: subject ?? '', body }));
+  const scoped =
+    sectionId && mongoose.isValidObjectId(sectionId)
+      ? new mongoose.Types.ObjectId(String(sectionId))
+      : null;
+  res
+    .status(201)
+    .json(await Template.create({ name, subject: subject ?? '', body, sectionId: scoped }));
 });
 
 templatesRouter.put('/:id', async (req, res) => {
-  const { name, subject, body } = req.body ?? {};
+  const { name, subject, body, sectionId } = req.body ?? {};
+  const update: Record<string, unknown> = { name, subject, body };
+  if (sectionId !== undefined) {
+    update.sectionId =
+      sectionId && mongoose.isValidObjectId(sectionId)
+        ? new mongoose.Types.ObjectId(String(sectionId))
+        : null;
+  }
   const tpl = await Template.findByIdAndUpdate(
     req.params.id,
-    { name, subject, body },
+    update,
     { new: true, runValidators: true },
   );
   if (!tpl) return res.status(404).json({ error: 'template not found' });

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import { useSections } from '../SectionContext';
 import type { Template } from '../types';
 
 const PLACEHOLDERS = [
@@ -7,17 +8,27 @@ const PLACEHOLDERS = [
   'title', 'company', 'source', 'matchedKeywords', 'leadUrl',
 ];
 
-const BLANK = { name: '', subject: '', body: '' };
+const BLANK = { name: '', subject: '', body: '', sectionId: '' };
 
 export default function Templates() {
+  const { sections, active } = useSections();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState<{ _id?: string } & typeof BLANK>(BLANK);
   const [saved, setSaved] = useState(false);
 
-  function load() {
+  // Listing every template regardless of section: this page is where you manage
+  // them, so hiding other sections' templates would make them unreachable.
+  const load = useCallback(() => {
     api<Template[]>('/api/templates').then(setTemplates);
-  }
-  useEffect(load, []);
+  }, []);
+  useEffect(load, [load]);
+
+  // A new template defaults to the section you're working in.
+  useEffect(() => {
+    setEditing((e) =>
+      e._id || e.name || e.body ? e : { ...BLANK, sectionId: active === 'unsorted' ? '' : active },
+    );
+  }, [active]);
 
   async function save() {
     if (!editing.name.trim() || !editing.body.trim()) return;
@@ -25,6 +36,7 @@ export default function Templates() {
       name: editing.name,
       subject: editing.subject,
       body: editing.body,
+      sectionId: editing.sectionId || null,
     });
     if (editing._id) {
       await api(`/api/templates/${editing._id}`, { method: 'PUT', body: payload });
@@ -36,6 +48,9 @@ export default function Templates() {
     setTimeout(() => setSaved(false), 1500);
     load();
   }
+
+  const sectionName = (id: string | null) =>
+    id ? (sections.find((s) => s._id === id)?.name ?? 'unknown section') : 'Shared';
 
   async function remove(id: string) {
     if (!confirm('Delete this template?')) return;
@@ -69,6 +84,18 @@ export default function Templates() {
             />
           </label>
           <label>
+            Use in section
+            <select
+              value={editing.sectionId}
+              onChange={(e) => setEditing({ ...editing, sectionId: e.target.value })}
+            >
+              <option value="">Shared — every section</option>
+              {sections.map((s) => (
+                <option key={s._id} value={s._id}>{s.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Body
             <textarea
               rows={14}
@@ -95,7 +122,13 @@ export default function Templates() {
           <h2>Saved ({templates.length})</h2>
           {templates.map((t) => (
             <div key={t._id} className="tpl-row">
-              <button className="tpl-name" onClick={() => setEditing(t)}>{t.name}</button>
+              <button
+                className="tpl-name"
+                onClick={() => setEditing({ ...t, sectionId: t.sectionId ?? '' })}
+              >
+                {t.name}
+                <span className="muted small tpl-scope">{sectionName(t.sectionId)}</span>
+              </button>
               <button className="btn btn-small btn-danger" onClick={() => remove(t._id)}>Delete</button>
             </div>
           ))}

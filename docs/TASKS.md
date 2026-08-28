@@ -78,6 +78,50 @@ Notes:
   in one request and exceeds the 60s default.
 - Only the client publishes a host port; API and Mongo stay on the internal network.
 
+## Phase 6 — Sections + UI overhaul (2026-08-27)
+- [x] T6.1 Section model; Lead gains sectionId + sectionLocked; Template gains sectionId
+- [x] T6.2 classifier: best-match-wins, ties break to lower `order`, no match → Unsorted
+- [x] T6.3 reclassifyAll — runs on section create/edit/delete, skips pinned leads
+- [x] T6.4 sections CRUD API + `?section=` scoping on /leads and /stats
+- [x] T6.5 PATCH /leads/:id accepts sectionId → pins the lead
+- [x] T6.6 first-boot migration: global keywords → "Freelance / Dev", classify all leads
+- [x] T6.7 fixed sidebar with section switcher + counts; sticky topbar with scrape
+- [x] T6.8 LeadModal (1120px, tabs + aside) replaces the 640px drawer
+- [x] T6.9 drag a lead onto a sidebar section to re-file it
+- [x] T6.10 section-scoped templates (null sectionId = shared everywhere)
+
+Design notes:
+- **Unsorted is `sectionId: null`, not a Section document.** A null FK can't be
+  renamed into a real section, deleted, or matched against, and it keeps
+  "never classified" honest in the data.
+- **Ranking uses `keywordWeight`, not the total score.** The other four score
+  components are section-independent, so they'd add the same constant to every
+  candidate and only blur ties.
+- **Nothing is ever discarded** — the score floor suggested earlier was dropped
+  on request. Deleting a section returns its leads to Unsorted rather than
+  removing them.
+- Scoring is section-relative: a lead is scored against the keywords of the
+  section that claims it, so each section's ranking means something.
+
+## Phase 7 — Excel export (2026-08-27)
+- [x] T7.1 exportExcel service (exceljs) — Leads + Summary sheets
+- [x] T7.2 GET /api/leads/export, sharing the list route's filter builder
+- [x] T7.3 Export button on the Leads page, carrying the live filters
+- [x] T7.4 tests: xlsx bytes, scoping, filenames, formula injection, route order
+
+Notes:
+- `/export` is registered **before** `/:id` — otherwise Express reads "export"
+  as a lead id and the download 500s on a CastError.
+- `buildLeadFilter()` is shared by the list and the export so the spreadsheet
+  can never drift from what the screen shows.
+- Cells starting `=`, `+`, `-` or `@` are prefixed with an apostrophe. Lead text
+  is scraped from the open web, so a title like `=HYPERLINK(...)` would
+  otherwise become a live formula on open.
+- **Bug found while testing the export:** switching section and immediately
+  changing a filter let the slower earlier response overwrite the newer one
+  (screen showed 103 rows while the file correctly had 3). Leads, Pipeline and
+  Dashboard now abort the in-flight request before issuing a new one.
+
 ## Verified end to end
 
 - 393 real leads ingested across all four live sources
@@ -85,7 +129,19 @@ Notes:
 - Pipeline state (status, notes, follow-ups) survives every re-scrape
 - Pitch rendering substitutes profile + lead fields correctly
 - Vite dev server proxies to the API; client typechecks and builds clean
-- 48 tests passing
 - Dockerized stack: all 3 containers healthy, live scrape works from inside the
   container, SPA deep links resolve, 393 leads survive `restart` and container
   recreation, cold start on an empty volume seeds defaults correctly
+- Sections (browser-verified with Playwright): migration filed 393 existing
+  leads with zero loss; sidebar/leads/stats counts agree exactly; creating a
+  section re-files the pool live; a keyword edit moves unpinned leads while
+  pinned ones stay; deleting a section returns leads to Unsorted; a live scrape
+  adding 50 leads moved no existing lead and preserved every pin
+- Layout: after scrolling 1200px both sidebar and topbar measure top: 0
+- Drag-and-drop: dropping a row on a sidebar section highlights the target,
+  updates counts live, and persists as sectionId + sectionLocked server-side
+- 71 tests passing (24 unit, 6 scraper, 18 API, 16 sections, 7 export)
+- Export verified by downloading through nginx and re-parsing the workbook:
+  443 rows unfiltered, 3 rows for GTM + Hot(60+), correct dates, working
+  hyperlinks, frozen header, autofilter, summary sheet
+- Browser download test confirms the file matches the on-screen rows exactly

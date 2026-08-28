@@ -6,6 +6,7 @@ import { templatesRouter } from "./routes/templates.js";
 import { settingsRouter } from "./routes/settings.js";
 import { statsRouter } from "./routes/stats.js";
 import { emailRouter } from "./routes/email.js";
+import { sectionsRouter } from "./routes/sections.js";
 
 export function createApp() {
     const app = express();
@@ -13,6 +14,7 @@ export function createApp() {
     app.use(express.json({ limit: "1mb" }));
 
     app.get("/api/health", (_req, res) => res.json({ ok: true }));
+    app.use("/api/sections", sectionsRouter);
     app.use("/api/leads", leadsRouter);
     app.use("/api/scrape", scrapeRouter);
     app.use("/api/templates", templatesRouter);

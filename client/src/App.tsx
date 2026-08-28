@@ -1,44 +1,38 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { useState } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { SectionProvider } from './SectionContext';
+import Sidebar from './components/Sidebar';
+import Topbar from './components/Topbar';
 import Dashboard from './pages/Dashboard';
 import Leads from './pages/Leads';
 import Pipeline from './pages/Pipeline';
 import Templates from './pages/Templates';
 import SettingsPage from './pages/SettingsPage';
 
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/leads', label: 'Leads' },
-  { to: '/pipeline', label: 'Pipeline' },
-  { to: '/templates', label: 'Templates' },
-  { to: '/settings', label: 'Settings' },
-];
-
 export default function App() {
+  // Bumped whenever something outside a page mutates leads (a scrape, or a
+  // lead dropped onto a sidebar section) so the mounted page refetches.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const bump = () => setRefreshKey((n) => n + 1);
+
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="logo">
-          Lead<span>Forge</span>
+    <SectionProvider>
+      <div className="layout">
+        <Sidebar onLeadMoved={bump} />
+        <div className="main">
+          <Topbar onScraped={bump} />
+          <main className="content">
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard refreshKey={refreshKey} />} />
+              <Route path="/leads" element={<Leads refreshKey={refreshKey} />} />
+              <Route path="/pipeline" element={<Pipeline refreshKey={refreshKey} />} />
+              <Route path="/templates" element={<Templates />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </main>
         </div>
-        <nav>
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? 'active' : '')}>
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-foot">free · local · yours</div>
-      </aside>
-      <main className="content">
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/leads" element={<Leads />} />
-          <Route path="/pipeline" element={<Pipeline />} />
-          <Route path="/templates" element={<Templates />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </main>
-    </div>
+      </div>
+    </SectionProvider>
   );
 }

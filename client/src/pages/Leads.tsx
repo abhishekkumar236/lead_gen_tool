@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, isAbort } from '../api';
+import { useSections, withSection } from '../SectionContext';
 import type { Lead } from '../types';
 import { SOURCE_LABELS, STATUS_LABELS } from '../types';
 import { ScoreBadge, SourceTag, StatusPill, fmtDate } from '../components/bits';
-import LeadDrawer from '../components/LeadDrawer';
+import LeadModal from '../components/LeadModal';
 
-export default function Leads() {
+export default function Leads({ refreshKey }: { refreshKey: number }) {
+  const { active, activeName, sections, reload: reloadSections } = useSections();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [status, setStatus] = useState('');
   const [source, setSource] = useState('');
@@ -15,27 +17,38 @@ export default function Leads() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const query = useCallback(() => {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (source) params.set('source', source);
     if (minScore) params.set('minScore', minScore);
     if (q.trim()) params.set('q', q.trim());
+    return withSection(params, active);
+  }, [status, source, minScore, q, active]);
+
+  const inFlight = useRef<AbortController | null>(null);
+
+  const load = useCallback(async () => {
+    inFlight.current?.abort();
+    const ctrl = new AbortController();
+    inFlight.current = ctrl;
+    setLoading(true);
     try {
-      setLeads(await api<Lead[]>(`/api/leads?${params}`));
+      const data = await api<Lead[]>(`/api/leads?${query()}`, { signal: ctrl.signal });
+      setLeads(data);
       setError('');
     } catch (e) {
+      if (isAbort(e)) return; // a newer request took over
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (inFlight.current === ctrl) setLoading(false);
     }
-  }, [status, source, minScore, q]);
+  }, [query]);
 
   useEffect(() => {
     const t = setTimeout(load, q ? 300 : 0);
     return () => clearTimeout(t);
-  }, [load, q]);
+  }, [load, q, refreshKey]);
 
   function applyUpdate(updated: Lead) {
     setLeads((ls) => ls.map((l) => (l._id === updated._id ? updated : l)));
@@ -46,12 +59,26 @@ export default function Leads() {
     await api(`/api/leads/${id}`, { method: 'DELETE' });
     setLeads((ls) => ls.filter((l) => l._id !== id));
     setSelected(null);
+    reloadSections();
   }
+
+  const sectionName = (id: string | null) =>
+    id ? (sections.find((s) => s._id === id)?.name ?? '—') : 'Unsorted';
 
   return (
     <div>
       <header className="page-head">
-        <h1>Leads {leads.length > 0 && <span className="muted">({leads.length})</span>}</h1>
+        <h1>
+          {activeName} <span className="muted">({leads.length})</span>
+        </h1>
+        {/* Content-Disposition on the endpoint turns this into a file download. */}
+        <a
+          className={`btn ${leads.length === 0 ? 'btn-disabled' : ''}`}
+          href={`/api/leads/export?${query()}`}
+          title="Download the leads below, with the filters you have applied"
+        >
+          ⭳ Export to Excel
+        </a>
       </header>
 
       <div className="filters card">
@@ -77,42 +104,53 @@ export default function Leads() {
 
       {error && <div className="error-box">{error}</div>}
 
-      <table className="lead-table card">
-        <thead>
-          <tr>
-            <th>Score</th>
-            <th>Title</th>
-            <th>Source</th>
-            <th>Email</th>
-            <th>Budget</th>
-            <th>Posted</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leads.map((l) => (
-            <tr key={l._id} onClick={() => setSelected(l)}>
-              <td><ScoreBadge score={l.score} /></td>
-              <td>
-                <div className="cell-title">{l.title}</div>
-                {l.company && <div className="muted small">{l.company}</div>}
-              </td>
-              <td><SourceTag source={l.source} /></td>
-              <td className="small">{l.contactEmail || <span className="muted">—</span>}</td>
-              <td className="small">{l.budgetText || <span className="muted">—</span>}</td>
-              <td className="small">{fmtDate(l.postedAt)}</td>
-              <td><StatusPill status={l.status} /></td>
+      <div className="card table-wrap">
+        <table className="lead-table">
+          <thead>
+            <tr>
+              <th>Score</th>
+              <th>Title</th>
+              <th>Source</th>
+              {!active && <th>Section</th>}
+              <th>Email</th>
+              <th>Budget</th>
+              <th>Posted</th>
+              <th>Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {leads.map((l) => (
+              <tr
+                key={l._id}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData('text/plain', l._id)}
+                onClick={() => setSelected(l)}
+              >
+                <td><ScoreBadge score={l.score} /></td>
+                <td>
+                  <div className="cell-title">{l.title}</div>
+                  {l.company && <div className="muted small">{l.company}</div>}
+                </td>
+                <td><SourceTag source={l.source} /></td>
+                {!active && <td className="small muted">{sectionName(l.sectionId)}</td>}
+                <td className="small">{l.contactEmail || <span className="muted">—</span>}</td>
+                <td className="small">{l.budgetText || <span className="muted">—</span>}</td>
+                <td className="small">{fmtDate(l.postedAt)}</td>
+                <td><StatusPill status={l.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {!loading && leads.length === 0 && (
-        <p className="muted empty">No leads match. Try clearing filters, or run a scrape from the Dashboard.</p>
+        <p className="muted empty">
+          No leads here. Clear the filters, pick another section, or run a scrape.
+        </p>
       )}
 
       {selected && (
-        <LeadDrawer
+        <LeadModal
           lead={selected}
           onClose={() => setSelected(null)}
           onChange={applyUpdate}

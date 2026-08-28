@@ -1,9 +1,9 @@
 import { Lead } from '../models/Lead.js';
-import { getSettings } from '../models/Settings.js';
 import { getScrapers } from '../scrapers/index.js';
 import type { Fetcher, RawLead } from '../scrapers/types.js';
 import { extractBudget, extractEmails, isPlausible } from './normalize.js';
-import { scoreLead } from './score.js';
+import { classify, scoreWithinSection, type SectionRule } from './classify.js';
+import { loadSectionRules } from './reclassify.js';
 import { config } from '../config.js';
 
 export interface SourceResult {
@@ -26,8 +26,7 @@ export async function runScrape(
   sources?: string[],
   fetcher: Fetcher = fetch,
 ): Promise<SourceResult[]> {
-  const settings = await getSettings();
-  const keywords = settings.keywords ?? [];
+  const rules = await loadSectionRules();
   const wrapped = timeoutFetcher(fetcher);
 
   const results = await Promise.all(
@@ -37,7 +36,7 @@ export async function runScrape(
         let inserted = 0;
         let updated = 0;
         for (const lead of raw) {
-          const outcome = await upsertLead(lead, keywords);
+          const outcome = await upsertLead(lead, rules);
           if (outcome === 'inserted') inserted++;
           else if (outcome === 'updated') updated++;
         }
@@ -58,14 +57,11 @@ export async function runScrape(
 
 async function upsertLead(
   raw: RawLead,
-  keywords: string[],
+  rules: SectionRule[],
 ): Promise<'inserted' | 'updated' | 'skipped'> {
   const emails = extractEmails(`${raw.title}\n${raw.description}`);
   const budgetText = raw.budgetText || extractBudget(raw.description);
-  const { score, matchedKeywords } = scoreLead(raw, keywords, {
-    hasEmail: emails.length > 0,
-    budgetText,
-  });
+  const opts = { hasEmail: emails.length > 0, budgetText };
 
   const existing = await Lead.findOne({ source: raw.source, sourceId: raw.sourceId });
   if (existing) {
@@ -78,21 +74,36 @@ async function upsertLead(
     // corrected address survives re-scrapes.
     if (existing.contactEmail && !isPlausible(existing.contactEmail)) existing.contactEmail = '';
     if (!existing.contactEmail && emails.length > 0) existing.contactEmail = emails[0];
-    existing.score = score;
-    existing.matchedKeywords = matchedKeywords;
+    // A pinned lead keeps its section and is only re-scored inside it; an
+    // unpinned one is re-classified from scratch against the current rules.
+    if (existing.sectionLocked) {
+      const section = existing.sectionId
+        ? (rules.find((r) => String(r._id) === String(existing.sectionId)) ?? null)
+        : null;
+      const scored = scoreWithinSection(raw, section, opts);
+      existing.score = scored.score;
+      existing.matchedKeywords = scored.matchedKeywords;
+    } else {
+      const next = classify(raw, rules, opts);
+      existing.sectionId = next.sectionId as never;
+      existing.score = next.score;
+      existing.matchedKeywords = next.matchedKeywords;
+    }
     existing.budgetText = budgetText;
     existing.scrapedAt = new Date();
     await existing.save();
     return 'updated';
   }
 
+  const fresh = classify(raw, rules, opts);
   await Lead.create({
     ...raw,
     emails,
     contactEmail: emails[0] ?? '',
     budgetText,
-    score,
-    matchedKeywords,
+    sectionId: fresh.sectionId,
+    score: fresh.score,
+    matchedKeywords: fresh.matchedKeywords,
     status: 'new',
     scrapedAt: new Date(),
   });

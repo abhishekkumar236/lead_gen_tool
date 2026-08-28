@@ -14,8 +14,28 @@ export interface Note {
   at: string;
 }
 
+export interface Section {
+  _id: string;
+  name: string;
+  keywords: string[];
+  color: string;
+  order: number;
+  count: number;
+}
+
+export interface SectionList {
+  sections: Section[];
+  unsortedCount: number;
+  total: number;
+}
+
+/** The Unsorted bucket is a null sectionId server-side; the UI addresses it by this token. */
+export const UNSORTED = 'unsorted';
+
 export interface Lead {
   _id: string;
+  sectionId: string | null;
+  sectionLocked: boolean;
   source: LeadSource;
   sourceId: string;
   title: string;
@@ -42,6 +62,7 @@ export interface Template {
   name: string;
   subject: string;
   body: string;
+  sectionId: string | null;
 }
 
 export interface Settings {

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
-import type { ScrapeResult, Stats } from '../types';
+import { api, isAbort } from '../api';
+import { useSections, withSection } from '../SectionContext';
+import type { Stats } from '../types';
 import { ScoreBadge, SourceTag, fmtDate } from '../components/bits';
 
 const FUNNEL: Array<{ key: keyof Stats['byStatus']; label: string }> = [
@@ -12,63 +13,32 @@ const FUNNEL: Array<{ key: keyof Stats['byStatus']; label: string }> = [
   { key: 'won', label: 'Won' },
 ];
 
-export default function Dashboard() {
+export default function Dashboard({ refreshKey }: { refreshKey: number }) {
+  const { active, activeName } = useSections();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [scraping, setScraping] = useState(false);
-  const [scrapeResults, setScrapeResults] = useState<ScrapeResult[] | null>(null);
   const [error, setError] = useState('');
 
+  const inFlight = useRef<AbortController | null>(null);
+
   const load = useCallback(() => {
-    api<Stats>('/api/stats').then(setStats).catch((e) => setError(e.message));
-  }, []);
+    inFlight.current?.abort();
+    const ctrl = new AbortController();
+    inFlight.current = ctrl;
+    const params = withSection(new URLSearchParams(), active);
+    api<Stats>(`/api/stats?${params}`, { signal: ctrl.signal })
+      .then(setStats)
+      .catch((e) => !isAbort(e) && setError(e.message));
+  }, [active]);
 
-  useEffect(load, [load]);
-
-  async function scrapeNow() {
-    setScraping(true);
-    setError('');
-    setScrapeResults(null);
-    try {
-      const res = await api<{ results: ScrapeResult[] }>('/api/scrape', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      setScrapeResults(res.results);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setScraping(false);
-    }
-  }
+  useEffect(load, [load, refreshKey]);
 
   return (
     <div>
       <header className="page-head">
-        <h1>Dashboard</h1>
-        <button className="btn btn-primary" onClick={scrapeNow} disabled={scraping}>
-          {scraping ? 'Scraping…' : '⟳ Scrape all sources'}
-        </button>
+        <h1>Dashboard <span className="muted">· {activeName}</span></h1>
       </header>
 
       {error && <div className="error-box">{error}</div>}
-
-      {scrapeResults && (
-        <div className="card scrape-report">
-          {scrapeResults.map((r) => (
-            <div key={r.source} className="scrape-row">
-              <strong>{r.source}</strong>
-              {r.error ? (
-                <span className="error-text">{r.error}</span>
-              ) : (
-                <span>
-                  {r.fetched} fetched · {r.inserted} new · {r.updated} updated
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       <section className="funnel">
         {FUNNEL.map((f) => (
