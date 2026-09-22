@@ -10,6 +10,14 @@ import ConfirmDialog from '../components/ConfirmDialog';
 /** Posts older than this are considered dead — nobody's still hiring off a month-old thread. */
 const STALE_DAYS = 30;
 
+/** Values the API's `?sort=` whitelist accepts. Undated posts sort last under "newest". */
+const SORTS = [
+  { value: '-score', label: 'Best score' },
+  { value: '-postedAt', label: 'Newest posted' },
+  { value: 'postedAt', label: 'Oldest posted' },
+  { value: '-scrapedAt', label: 'Recently scraped' },
+] as const;
+
 export default function Leads({ refreshKey }: { refreshKey: number }) {
   const { active, activeName, sections, reload: reloadSections } = useSections();
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -17,6 +25,7 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
   const [source, setSource] = useState('');
   const [minScore, setMinScore] = useState('');
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<string>(SORTS[0].value);
   const [selected, setSelected] = useState<Lead | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,8 +41,9 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
     if (source) params.set('source', source);
     if (minScore) params.set('minScore', minScore);
     if (q.trim()) params.set('q', q.trim());
+    if (sort !== SORTS[0].value) params.set('sort', sort);
     return withSection(params, active);
-  }, [status, source, minScore, q, active]);
+  }, [status, source, minScore, q, sort, active]);
 
   const inFlight = useRef<AbortController | null>(null);
 
@@ -158,6 +168,11 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
           <option value="60">Hot (60+)</option>
           <option value="35">Warm (35+)</option>
         </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} title="Sort order">
+          {SORTS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </div>
 
       {error && <div className="error-box">{error}</div>}
@@ -172,7 +187,13 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
               {!active && <th>Section</th>}
               <th>Email</th>
               <th>Budget</th>
-              <th>Posted</th>
+              <th
+                className="th-sort"
+                title="Sort by posting date"
+                onClick={() => setSort(sort === '-postedAt' ? 'postedAt' : '-postedAt')}
+              >
+                Posted {sort === '-postedAt' ? '↓' : sort === 'postedAt' ? '↑' : ''}
+              </th>
               <th>Status</th>
             </tr>
           </thead>

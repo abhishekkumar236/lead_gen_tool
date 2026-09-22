@@ -57,6 +57,7 @@ const leadSchema = new Schema(
 leadSchema.index({ source: 1, sourceId: 1 }, { unique: true });
 leadSchema.index({ status: 1, score: -1 });
 leadSchema.index({ sectionId: 1, score: -1 });
+leadSchema.index({ postedAt: -1, scrapedAt: -1 });
 leadSchema.index({ title: 'text', description: 'text', company: 'text' });
 
 export type LeadDoc = InferSchemaType<typeof leadSchema>;

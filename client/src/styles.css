@@ -113,6 +113,8 @@ body {
 
 .page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
 .page-actions { display: flex; align-items: center; gap: 10px; }
+.th-sort { cursor: pointer; user-select: none; }
+.th-sort:hover { color: var(--text); }
 h1 { font-size: 24px; margin: 0; }
 h2 { font-size: 15px; margin: 0 0 12px; }
 h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 22px 0 8px; }
@@ -186,7 +188,7 @@ label input, label select, label textarea { margin-top: 5px; color: var(--text);
 .source-counts { display: flex; gap: 20px; }
 .source-count { display: flex; align-items: center; gap: 7px; }
 
-.filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; }
+.filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px; }
 
 .table-wrap { padding: 0; overflow-x: auto; }
 .lead-table { width: 100%; border-collapse: collapse; }

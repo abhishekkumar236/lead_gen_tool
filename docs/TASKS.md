@@ -162,4 +162,9 @@ Notes:
 - A purged post that a source still lists comes back as `new` on the next
   scrape (dedupe is on `source+sourceId`, no tombstone). Acceptable for now;
   HN threads roll monthly and the others age out on their own.
+- [x] T6.4 `?sort=` on `GET /api/leads` and `/export` is now whitelisted:
+  `score` (default `-score`), `postedAt`, `scrapedAt`, `createdAt`, `followUpAt`,
+  `-` prefix for descending. `?sort=-postedAt` = latest posts first, undated last;
+  ascending date sorts drop undated leads. Unknown field → 400. Index on
+  `{ postedAt: -1, scrapedAt: -1 }`. API only — no client change.
 

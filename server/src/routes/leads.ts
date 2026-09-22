@@ -17,6 +17,38 @@ export function sectionFilter(section?: string): Record<string, unknown> {
   return { sectionId: new mongoose.Types.ObjectId(section) };
 }
 
+/**
+ * `?sort=` accepts a field with an optional leading `-` for descending:
+ * `score` (default `-score`), `postedAt`, `scrapedAt`, `createdAt`, `followUpAt`.
+ * `?sort=-postedAt` is "latest posts first". Date sorts are tie-broken by scrape
+ * time. Descending puts undated leads last (Mongo sorts null lowest); ascending
+ * would put them *first*, so those are dropped from ascending date sorts rather
+ * than leading with "—". Anything else is a 400, not a raw string handed to Mongo.
+ */
+export const SORT_FIELDS = ['score', 'postedAt', 'scrapedAt', 'createdAt', 'followUpAt'] as const;
+const DATE_FIELDS = new Set<string>(['postedAt', 'scrapedAt', 'createdAt', 'followUpAt']);
+
+export function parseSort(raw?: string): Record<string, 1 | -1> | null {
+  const value = raw?.trim() || '-score';
+  const desc = value.startsWith('-');
+  const field = desc ? value.slice(1) : value;
+  if (!(SORT_FIELDS as readonly string[]).includes(field)) return null;
+  const dir: 1 | -1 = desc ? -1 : 1;
+  const sort: Record<string, 1 | -1> = { [field]: dir };
+  if (DATE_FIELDS.has(field)) {
+    if (field !== 'scrapedAt') sort.scrapedAt = -1;
+  } else {
+    sort.postedAt = -1;
+  }
+  return sort;
+}
+
+/** See parseSort: an ascending date sort excludes leads that have no such date. */
+function nullsLast(sort: Record<string, 1 | -1>): Record<string, unknown> {
+  const [field, dir] = Object.entries(sort)[0];
+  return dir === 1 && DATE_FIELDS.has(field) ? { [field]: { $ne: null } } : {};
+}
+
 /** Shared by the list and the export so the spreadsheet always matches the screen. */
 function buildLeadFilter(query: Record<string, string>): Record<string, unknown> {
   const { status, source, q, minScore, section } = query;
@@ -30,20 +62,26 @@ function buildLeadFilter(query: Record<string, string>): Record<string, unknown>
 
 leadsRouter.get('/', async (req, res) => {
   const query = req.query as Record<string, string>;
-  const { sort = '-score', limit = '200' } = query;
-  const filter = buildLeadFilter(query);
+  const sort = parseSort(query.sort);
+  if (!sort) {
+    return res.status(400).json({ error: `invalid sort: ${query.sort} (use one of ${SORT_FIELDS.join(', ')}, prefix - for descending)` });
+  }
+  const filter = { ...buildLeadFilter(query), ...nullsLast(sort) };
   const leads = await Lead.find(filter)
     .sort(sort)
-    .limit(Math.min(Number(limit) || 200, 1000));
+    .limit(Math.min(Number(query.limit) || 200, 1000));
   res.json(leads);
 });
 
 leadsRouter.get('/export', async (req, res) => {
   const query = req.query as Record<string, string>;
-  const { sort = '-score' } = query;
+  const sort = parseSort(query.sort);
+  if (!sort) {
+    return res.status(400).json({ error: `invalid sort: ${query.sort} (use one of ${SORT_FIELDS.join(', ')}, prefix - for descending)` });
+  }
 
   const [leads, sections] = await Promise.all([
-    Lead.find(buildLeadFilter(query)).sort(sort).limit(5000).lean(),
+    Lead.find({ ...buildLeadFilter(query), ...nullsLast(sort) }).sort(sort).limit(5000).lean(),
     Section.find().lean(),
   ]);
 

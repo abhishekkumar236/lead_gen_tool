@@ -132,6 +132,30 @@ describe('leads', () => {
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
   });
 
+  it('sorts by posting date, newest first, undated last', async () => {
+    const res = await request(app).get('/api/leads?sort=-postedAt');
+    expect(res.status).toBe(200);
+    const dates = res.body.map((l: any) => l.postedAt);
+    const dated = dates.filter(Boolean);
+    expect(dated.length).toBeGreaterThan(1);
+    expect([...dated].sort().reverse()).toEqual(dated);
+    // nulls sit after every dated lead
+    expect(dates.indexOf(null) === -1 || dates.indexOf(null) === dated.length).toBe(true);
+
+    const asc = await request(app).get('/api/leads?sort=postedAt');
+    const ascDates = asc.body.map((l: any) => l.postedAt);
+    expect(ascDates.every(Boolean)).toBe(true); // undated dropped, not leading
+    expect([...ascDates].sort()).toEqual(ascDates);
+  });
+
+  it('rejects an unknown sort field', async () => {
+    const res = await request(app).get('/api/leads?sort=-description');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid sort/);
+    const exp = await request(app).get('/api/leads/export?sort=$where');
+    expect(exp.status).toBe(400);
+  });
+
   it('moves a lead through the pipeline and stamps pitchedAt', async () => {
     const lead = await Lead.findOne({ source: 'hn', sourceId: '41000010' });
     const res = await request(app)
