@@ -65,6 +65,37 @@ leadsRouter.get('/export', async (req, res) => {
   res.end(buffer);
 });
 
+/**
+ * Untouched leads whose post is older than `days` (default 30): still `new`
+ * with no notes. Anything the user acted on — shortlisted through won, lost,
+ * archived, or noted — is pipeline history rather than clutter and is never
+ * matched. A post with no date falls back to when it was scraped. Same
+ * section scoping as the list, so the purge matches what's on screen.
+ */
+function staleFilter(query: Record<string, string>): { filter: Record<string, unknown>; days: number } {
+  const days = Math.max(1, Math.floor(Number(query.days)) || 30);
+  const cutoff = new Date(Date.now() - days * 86_400_000);
+  const filter: Record<string, unknown> = {
+    ...sectionFilter(query.section),
+    status: 'new',
+    'notes.0': { $exists: false },
+    $or: [{ postedAt: { $lt: cutoff } }, { postedAt: null, scrapedAt: { $lt: cutoff } }],
+  };
+  return { filter, days };
+}
+
+// Both sit above `/:id` so "stale" isn't swallowed as a lead id.
+leadsRouter.get('/stale', async (req, res) => {
+  const { filter, days } = staleFilter(req.query as Record<string, string>);
+  res.json({ days, count: await Lead.countDocuments(filter) });
+});
+
+leadsRouter.delete('/stale', async (req, res) => {
+  const { filter, days } = staleFilter(req.query as Record<string, string>);
+  const { deletedCount } = await Lead.deleteMany(filter);
+  res.json({ days, deleted: deletedCount });
+});
+
 leadsRouter.get('/:id', async (req, res) => {
   const lead = await Lead.findById(req.params.id);
   if (!lead) return res.status(404).json({ error: 'lead not found' });

@@ -145,3 +145,21 @@ Notes:
   443 rows unfiltered, 3 rows for GTM + Hot(60+), correct dates, working
   hyperlinks, frozen header, autofilter, summary sheet
 - Browser download test confirms the file matches the on-screen rows exactly
+
+## Phase 6 — Housekeeping (2026-09-22)
+- [x] T6.1 `GET|DELETE /api/leads/stale?days=30&section=` — counts / removes untouched
+  leads (status `new`, no notes) whose post — or scrape, when undated — is older
+  than `days`. Section-scoped like export. Sits above `/:id` in the router.
+- [x] T6.2 "Delete old leads" button on the Leads page: counts first, opens a
+  confirm only when there's something to remove, reports "removed N" inline.
+- [x] T6.3 `ConfirmDialog` replaces every `window.confirm()` (lead delete,
+  template delete). Portal to `body`; the lead modal hands Escape to it while
+  it's open.
+
+Notes:
+- Pipeline leads (shortlisted → won, lost, archived) and anything with a note
+  are never purged — the point is clearing clutter, not history.
+- A purged post that a source still lists comes back as `new` on the next
+  scrape (dedupe is on `source+sourceId`, no tombstone). Acceptable for now;
+  HN threads roll monthly and the others age out on their own.
+

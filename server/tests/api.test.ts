@@ -158,6 +158,51 @@ describe('leads', () => {
     expect(res.body.notes.at(-1).text).toBe('sent pitch v1');
   });
 
+  it('purges only untouched leads older than N days, scoped by section', async () => {
+    const day = 86_400_000;
+    const old = new Date(Date.now() - 45 * day);
+    const fresh = new Date(Date.now() - 5 * day);
+
+    // Own section so the scrape fixtures (unsorted, old) stay out of the counts,
+    // and the stats test that follows still sees the same leads.
+    const sec = await request(app).post('/api/sections').send({ name: 'Purge', keywords: 'zzznomatch' });
+    const sectionId = sec.body.section._id;
+    const mk = (sourceId: string, extra: Record<string, unknown>) =>
+      Lead.create({ source: 'hn', sourceId, title: `purge ${sourceId}`, sectionId, sectionLocked: true, ...extra });
+
+    const [gone, goneUndated, keptFresh, keptPitched, keptNoted, keptUnsorted] = await Promise.all([
+      mk('p-old', { postedAt: old }),
+      mk('p-undated', { postedAt: null, scrapedAt: old }),
+      mk('p-fresh', { postedAt: fresh }),
+      mk('p-pitched', { postedAt: old, status: 'pitched' }),
+      mk('p-noted', { postedAt: old, notes: [{ text: 'called them', at: new Date() }] }),
+      mk('p-unsorted', { postedAt: old, sectionId: null }),
+    ]);
+
+    const count = await request(app).get(`/api/leads/stale?days=30&section=${sectionId}`);
+    expect(count.status).toBe(200);
+    expect(count.body).toEqual({ days: 30, count: 2 });
+
+    const res = await request(app).delete(`/api/leads/stale?days=30&section=${sectionId}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ days: 30, deleted: 2 });
+
+    expect(await Lead.findById(gone._id)).toBeNull();
+    expect(await Lead.findById(goneUndated._id)).toBeNull();
+    for (const kept of [keptFresh, keptPitched, keptNoted, keptUnsorted]) {
+      expect(await Lead.findById(kept._id)).not.toBeNull();
+    }
+
+    // A bad `days` falls back to 30; a wider window catches the fresh one too.
+    const bad = await request(app).get(`/api/leads/stale?days=abc&section=${sectionId}`);
+    expect(bad.body).toEqual({ days: 30, count: 0 });
+    const wide = await request(app).get(`/api/leads/stale?days=1&section=${sectionId}`);
+    expect(wide.body).toEqual({ days: 1, count: 1 });
+
+    await Lead.deleteMany({ sourceId: /^p-/ });
+    await request(app).delete(`/api/sections/${sectionId}`);
+  });
+
   it('404s on missing lead, 500s contained on malformed id', async () => {
     const missing = await request(app).get(`/api/leads/${new mongoose.Types.ObjectId()}`);
     expect(missing.status).toBe(404);

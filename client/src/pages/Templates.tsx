@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useSections } from '../SectionContext';
 import type { Template } from '../types';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const PLACEHOLDERS = [
   'myName', 'headline', 'skills', 'portfolioUrl', 'rate',
@@ -15,6 +16,7 @@ export default function Templates() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState<{ _id?: string } & typeof BLANK>(BLANK);
   const [saved, setSaved] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Template | null>(null);
 
   // Listing every template regardless of section: this page is where you manage
   // them, so hiding other sections' templates would make them unreachable.
@@ -53,9 +55,9 @@ export default function Templates() {
     id ? (sections.find((s) => s._id === id)?.name ?? 'unknown section') : 'Shared';
 
   async function remove(id: string) {
-    if (!confirm('Delete this template?')) return;
     await api(`/api/templates/${id}`, { method: 'DELETE' });
     if (editing._id === id) setEditing(BLANK);
+    setPendingDelete(null);
     load();
   }
 
@@ -129,11 +131,23 @@ export default function Templates() {
                 {t.name}
                 <span className="muted small tpl-scope">{sectionName(t.sectionId)}</span>
               </button>
-              <button className="btn btn-small btn-danger" onClick={() => remove(t._id)}>Delete</button>
+              <button className="btn btn-small btn-danger" onClick={() => setPendingDelete(t)}>Delete</button>
             </div>
           ))}
         </section>
       </div>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete this template?"
+          confirmLabel="Delete template"
+          onConfirm={() => remove(pendingDelete._id)}
+          onCancel={() => setPendingDelete(null)}
+        >
+          <p><strong>{pendingDelete.name}</strong></p>
+          <p>Pitches you've already generated from it are unaffected.</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

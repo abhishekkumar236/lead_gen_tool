@@ -112,6 +112,7 @@ body {
 .content { padding: 24px 32px 60px; max-width: 1560px; }
 
 .page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.page-actions { display: flex; align-items: center; gap: 10px; }
 h1 { font-size: 24px; margin: 0; }
 h2 { font-size: 15px; margin: 0 0 12px; }
 h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 22px 0 8px; }
@@ -295,6 +296,15 @@ label input, label select, label textarea { margin-top: 5px; color: var(--text);
 .dialog h2 { font-size: 17px; margin-bottom: 6px; }
 .dialog p { margin: 0 0 16px; line-height: 1.5; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+/* confirm dialog — reuses .dialog, just narrower and with a filled danger button */
+.dialog-confirm { width: 400px; }
+.dialog-msg { color: var(--muted); line-height: 1.5; }
+.dialog-msg p { margin: 0 0 10px; }
+.dialog-msg p:last-child { margin-bottom: 0; }
+.dialog-msg strong { color: var(--text); }
+.btn-danger-fill { background: var(--hot); color: #fff; font-weight: 600; }
+.btn-danger-fill:hover { border-color: var(--hot); filter: brightness(1.08); }
+.btn-danger-fill:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
 .swatches { display: flex; gap: 8px; margin: 14px 0 4px; }
 .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
 .swatch-on { border-color: var(--text); }

@@ -5,6 +5,10 @@ import type { Lead } from '../types';
 import { SOURCE_LABELS, STATUS_LABELS } from '../types';
 import { ScoreBadge, SourceTag, StatusPill, fmtDate } from '../components/bits';
 import LeadModal from '../components/LeadModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+
+/** Posts older than this are considered dead — nobody's still hiring off a month-old thread. */
+const STALE_DAYS = 30;
 
 export default function Leads({ refreshKey }: { refreshKey: number }) {
   const { active, activeName, sections, reload: reloadSections } = useSections();
@@ -16,6 +20,11 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Purge flow: count first, and only open the confirm when there's something to delete.
+  const [purge, setPurge] = useState<{ count: number } | null>(null);
+  const [counting, setCounting] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [purged, setPurged] = useState<number | null>(null);
 
   const query = useCallback(() => {
     const params = new URLSearchParams();
@@ -62,6 +71,40 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
     reloadSections();
   }
 
+  // Scoped like Export: the purge only touches the section you're looking at.
+  const staleQuery = () =>
+    withSection(new URLSearchParams({ days: String(STALE_DAYS) }), active);
+
+  async function openPurge() {
+    setPurged(null);
+    setCounting(true);
+    try {
+      const { count } = await api<{ count: number }>(`/api/leads/stale?${staleQuery()}`);
+      if (count === 0) setPurged(0);
+      else setPurge({ count });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCounting(false);
+    }
+  }
+
+  async function runPurge() {
+    setPurging(true);
+    try {
+      const { deleted } = await api<{ deleted: number }>(`/api/leads/stale?${staleQuery()}`, {
+        method: 'DELETE',
+      });
+      setPurge(null);
+      setPurged(deleted);
+      await Promise.all([load(), reloadSections()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPurging(false);
+    }
+  }
+
   const sectionName = (id: string | null) =>
     id ? (sections.find((s) => s._id === id)?.name ?? '—') : 'Unsorted';
 
@@ -71,14 +114,29 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
         <h1>
           {activeName} <span className="muted">({leads.length})</span>
         </h1>
-        {/* Content-Disposition on the endpoint turns this into a file download. */}
-        <a
-          className={`btn ${leads.length === 0 ? 'btn-disabled' : ''}`}
-          href={`/api/leads/export?${query()}`}
-          title="Download the leads below, with the filters you have applied"
-        >
-          ⭳ Export to Excel
-        </a>
+        <div className="page-actions">
+          {purged !== null && (
+            <span className="small muted">
+              {purged === 0 ? 'nothing to remove' : `removed ${purged} old lead${purged === 1 ? '' : 's'}`}
+            </span>
+          )}
+          <button
+            className="btn btn-danger"
+            onClick={openPurge}
+            disabled={counting}
+            title={`Remove untouched leads posted more than ${STALE_DAYS} days ago`}
+          >
+            {counting ? 'Counting…' : '🗑 Delete old leads'}
+          </button>
+          {/* Content-Disposition on the endpoint turns this into a file download. */}
+          <a
+            className={`btn ${leads.length === 0 ? 'btn-disabled' : ''}`}
+            href={`/api/leads/export?${query()}`}
+            title="Download the leads below, with the filters you have applied"
+          >
+            ⭳ Export to Excel
+          </a>
+        </div>
       </header>
 
       <div className="filters card">
@@ -147,6 +205,26 @@ export default function Leads({ refreshKey }: { refreshKey: number }) {
         <p className="muted empty">
           No leads here. Clear the filters, pick another section, or run a scrape.
         </p>
+      )}
+
+      {purge && (
+        <ConfirmDialog
+          title={`Delete leads older than ${STALE_DAYS} days?`}
+          confirmLabel={`Delete ${purge.count} lead${purge.count === 1 ? '' : 's'}`}
+          busy={purging}
+          onConfirm={runPurge}
+          onCancel={() => setPurge(null)}
+        >
+          <p>
+            <strong>{purge.count}</strong> lead{purge.count === 1 ? '' : 's'} in{' '}
+            <strong>{activeName}</strong> {purge.count === 1 ? 'was' : 'were'} posted more than{' '}
+            {STALE_DAYS} days ago and never touched.
+          </p>
+          <p>
+            Only leads still marked <strong>New</strong> with no notes are removed. Anything
+            shortlisted, pitched, replied, won, lost or archived stays.
+          </p>
+        </ConfirmDialog>
       )}
 
       {selected && (

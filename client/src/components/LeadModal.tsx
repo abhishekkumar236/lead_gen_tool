@@ -4,6 +4,7 @@ import { useSections } from '../SectionContext';
 import type { Lead, LeadStatus, Template } from '../types';
 import { STATUS_LABELS } from '../types';
 import { ScoreBadge, SourceTag, fmtDate } from './bits';
+import ConfirmDialog from './ConfirmDialog';
 
 const STATUS_FLOW: LeadStatus[] = ['new', 'shortlisted', 'pitched', 'replied', 'won', 'lost'];
 
@@ -11,7 +12,7 @@ interface Props {
   lead: Lead;
   onClose(): void;
   onChange(updated: Lead): void;
-  onDelete(id: string): void;
+  onDelete(id: string): void | Promise<void>;
 }
 
 export default function LeadModal({ lead, onClose, onChange, onDelete }: Props) {
@@ -24,6 +25,8 @@ export default function LeadModal({ lead, onClose, onChange, onDelete }: Props) 
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<'post' | 'pitch' | 'notes'>('post');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const params = lead.sectionId ? `?section=${lead.sectionId}` : '';
@@ -40,10 +43,11 @@ export default function LeadModal({ lead, onClose, onChange, onDelete }: Props) 
   }, [lead._id, lead.contactEmail]);
 
   useEffect(() => {
+    if (confirmDelete) return; // the confirm dialog owns Escape while it's up
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, confirmDelete]);
 
   async function patch(body: Record<string, unknown>) {
     try {
@@ -66,6 +70,17 @@ export default function LeadModal({ lead, onClose, onChange, onDelete }: Props) 
       }),
     );
     setNote('');
+  }
+
+  async function confirmedDelete() {
+    setDeleting(true);
+    try {
+      await onDelete(lead._id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
   }
 
   async function renderPitch() {
@@ -287,17 +302,29 @@ export default function LeadModal({ lead, onClose, onChange, onDelete }: Props) 
               </div>
             )}
 
-            <button
-              className="btn btn-danger lm-delete"
-              onClick={() => {
-                if (confirm('Delete this lead permanently?')) onDelete(lead._id);
-              }}
-            >
+            <button className="btn btn-danger lm-delete" onClick={() => setConfirmDelete(true)}>
               Delete lead
             </button>
           </aside>
         </div>
+
+        {confirmDelete && (
+          <ConfirmDialog
+            title="Delete this lead?"
+            confirmLabel="Delete lead"
+            busy={deleting}
+            onConfirm={confirmedDelete}
+            onCancel={() => setConfirmDelete(false)}
+          >
+            <p><strong>{lead.title}</strong></p>
+            <p>
+              This removes it permanently, including its notes. If the source still lists the
+              post, the next scrape will bring it back as a fresh lead.
+            </p>
+          </ConfirmDialog>
+        )}
       </div>
     </div>
   );
 }
+
