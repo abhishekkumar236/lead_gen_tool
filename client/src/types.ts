@@ -7,7 +7,13 @@ export type LeadStatus =
   | 'lost'
   | 'archived';
 
-export type LeadSource = 'hn' | 'reddit' | 'remoteok' | 'remotive';
+export type LeadSource =
+  | 'hn'
+  | 'reddit'
+  | 'remoteok'
+  | 'remotive'
+  | 'himalayas'
+  | 'weworkremotely';
 
 export interface Note {
   text: string;
@@ -18,6 +24,9 @@ export interface Section {
   _id: string;
   name: string;
   keywords: string[];
+  titleKeywords: string[];
+  excludeKeywords: string[];
+  searchQueries: string[];
   color: string;
   order: number;
   count: number;
@@ -104,4 +113,6 @@ export const SOURCE_LABELS: Record<LeadSource, string> = {
   reddit: 'Reddit',
   remoteok: 'RemoteOK',
   remotive: 'Remotive',
+  himalayas: 'Himalayas',
+  weworkremotely: 'We Work Remotely',
 };

@@ -28,6 +28,8 @@ const settingsSchema = new Schema(
     },
     portfolioUrl: { type: String, default: '' },
     rate: { type: String, default: '' },
+    // Set once DEFAULT_SECTIONS were offered, so a default you delete stays deleted.
+    defaultSectionsSeeded: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

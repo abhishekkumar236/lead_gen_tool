@@ -12,6 +12,13 @@ export const hnSearchFreelancer = {
 
 export const hnSearchHiring = {
   hits: [
+    // Newer, and contains the query text — but not the official title format.
+    // Its item id is deliberately unrouted in fakeFetch: picking it fails loudly.
+    {
+      objectID: '41000099',
+      title: 'Ask HN: Who Is Hiring? (August 2026 – Joke Edition)',
+      created_at: '2026-08-02T15:00:00.000Z',
+    },
     {
       objectID: '41000002',
       title: 'Ask HN: Who is hiring? (August 2026)',
@@ -118,6 +125,63 @@ export const remotiveJobs = {
   ],
 };
 
+const himalayasJob = (guid: string, title: string, extra: Record<string, unknown> = {}) => ({
+  guid: `https://himalayas.app/companies/acme/jobs/${guid}`,
+  title,
+  companyName: 'Acme',
+  description: '<p>Own our Node.js services: Redis, Docker, event-driven design.</p>',
+  applicationLink: `https://himalayas.app/companies/acme/jobs/${guid}?utm_source=x`,
+  employmentType: 'Contractor',
+  locationRestrictions: [],
+  parentCategories: ['Software Development'],
+  minSalary: 60000,
+  maxSalary: 90000,
+  currency: 'USD',
+  salaryPeriod: 'annual',
+  pubDate: 1787572800, // 2026-08-24T12:00:00Z
+  ...extra,
+});
+
+/** Keyed by the `q` param. "backend engineer" repeats a job from "node.js" to prove dedupe. */
+export const himalayasByQuery: Record<string, unknown> = {
+  'node.js': { jobs: [himalayasJob('node-dev', 'Senior Node.js Engineer')] },
+  'backend engineer': {
+    jobs: [
+      himalayasJob('node-dev', 'Senior Node.js Engineer'),
+      himalayasJob('pmm', 'Product Marketing Manager', {
+        locationRestrictions: ['India', 'Singapore'],
+        minSalary: null,
+        maxSalary: null,
+      }),
+    ],
+  },
+};
+
+const wwrItem = (slug: string, title: string, region = 'Anywhere in the World') => `
+<item>
+  <title>${title}</title>
+  <region>${region}</region>
+  <category>Back-End Programming</category>
+  <type>Contract</type>
+  <description>&lt;p&gt;Build APIs in TypeScript &amp;amp; Node.js.&lt;/p&gt;</description>
+  <pubDate>Mon, 24 Aug 2026 06:01:30 +0000</pubDate>
+  <guid>https://weworkremotely.com/remote-jobs/${slug}</guid>
+  <link>https://weworkremotely.com/remote-jobs/${slug}</link>
+</item>`;
+
+const wwrFeed = (items: string) =>
+  `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
+  <title>We Work Remotely</title><link>https://weworkremotely.com/categories/x.rss</link>${items}
+  </channel></rss>`;
+
+// The same job sits in two category feeds; the scraper must keep one.
+export const wwrBackendRss = wwrFeed(wwrItem('acme-backend', 'Acme: Senior Backend Engineer'));
+export const wwrFullStackRss = wwrFeed(
+  wwrItem('acme-backend', 'Acme: Senior Backend Engineer') +
+    wwrItem('globex-fullstack', 'Globex: Full-Stack Developer', 'USA Only'),
+);
+export const wwrEmptyRss = wwrFeed('');
+
 function jsonResponse(data: unknown) {
   return { ok: true, status: 200, json: async () => data } as Response;
 }
@@ -138,5 +202,12 @@ export const fakeFetch: Fetcher = (async (input: string | URL) => {
   if (url.includes('reddit.com/r/')) return textResponse(redditEmptyRss);
   if (url.includes('remoteok.com/api')) return jsonResponse(remoteokJobs);
   if (url.includes('remotive.com/api')) return jsonResponse(remotiveJobs);
+  if (url.includes('himalayas.app/jobs/api/search')) {
+    const q = new URL(url).searchParams.get('q') ?? '';
+    return jsonResponse(himalayasByQuery[q] ?? { jobs: [] });
+  }
+  if (url.includes('remote-back-end-programming-jobs.rss')) return textResponse(wwrBackendRss);
+  if (url.includes('remote-full-stack-programming-jobs.rss')) return textResponse(wwrFullStackRss);
+  if (url.includes('weworkremotely.com/categories/')) return textResponse(wwrEmptyRss);
   throw new Error(`fakeFetch: unrouted url ${url}`);
 }) as Fetcher;

@@ -17,14 +17,24 @@ interface HnItem {
   children: HnItem[];
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Newest thread whose title is exactly "<query> (<Month> <Year>)".
+ * A loose "contains" match picked "Ask HN: Who Is Hiring? (November 2026 – We
+ * Give a Shit Edition)" — a 1-comment joke post — over the real 379-comment
+ * thread. Matching on the author doesn't work either: the freelancer thread
+ * stopped coming from the `whoishiring` account after October 2025.
+ */
 async function latestThread(fetcher: Fetcher, query: string): Promise<AlgoliaHit | null> {
-  const url = `${ALGOLIA}/search_by_date?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
+  const url = `${ALGOLIA}/search_by_date?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=20`;
   const res = await fetcher(url);
   if (!res.ok) throw new Error(`HN Algolia search failed: ${res.status}`);
   const data = (await res.json()) as { hits: AlgoliaHit[] };
-  // Exact-ish match: monthly threads always start with the query text.
-  const hit = data.hits.find((h) => h.title?.toLowerCase().includes(query.toLowerCase()));
-  return hit ?? null;
+  const exact = new RegExp(`^${escapeRegex(query)} \\([A-Z][a-z]+ \\d{4}\\)$`);
+  return data.hits.find((h) => exact.test(h.title ?? '')) ?? null;
 }
 
 function commentToLead(item: HnItem, threadKind: 'freelancer' | 'hiring'): RawLead | null {
@@ -64,7 +74,7 @@ export const hnScraper: Scraper = {
   source: 'hn',
   async run(fetcher: Fetcher): Promise<RawLead[]> {
     const [freelance, hiring] = await Promise.allSettled([
-      threadLeads(fetcher, 'Freelancer? Seeking freelancer?', 'freelancer'),
+      threadLeads(fetcher, 'Ask HN: Freelancer? Seeking freelancer?', 'freelancer'),
       threadLeads(fetcher, 'Ask HN: Who is hiring?', 'hiring'),
     ]);
     const leads: RawLead[] = [];

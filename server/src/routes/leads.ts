@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { Lead, LEAD_STATUSES } from '../models/Lead.js';
 import { Section } from '../models/Section.js';
 import { buildWorkbook, exportFilename } from '../services/exportExcel.js';
+import { LOCATIONS, locationFilter } from '../services/location.js';
 
 export const leadsRouter = Router();
 
@@ -49,15 +50,24 @@ function nullsLast(sort: Record<string, 1 | -1>): Record<string, unknown> {
   return dir === 1 && DATE_FIELDS.has(field) ? { [field]: { $ne: null } } : {};
 }
 
-/** Shared by the list and the export so the spreadsheet always matches the screen. */
-function buildLeadFilter(query: Record<string, string>): Record<string, unknown> {
+/**
+ * Shared by the list and the export so the spreadsheet always matches the screen.
+ * Returns null when `?location=` is unknown.
+ */
+function buildLeadFilter(query: Record<string, string>): Record<string, unknown> | null {
   const { status, source, q, minScore, section } = query;
-  const filter: Record<string, unknown> = { ...sectionFilter(section) };
+  const byLocation = locationFilter(query.location);
+  if (!byLocation) return null;
+  const filter: Record<string, unknown> = { ...sectionFilter(section), ...byLocation };
   if (status) filter.status = { $in: status.split(',') };
   if (source) filter.source = { $in: source.split(',') };
   if (minScore) filter.score = { $gte: Number(minScore) };
   if (q) filter.$text = { $search: q };
   return filter;
+}
+
+function badLocation(value: string): string {
+  return `invalid location: ${value} (use one of ${LOCATIONS.join(', ')})`;
 }
 
 leadsRouter.get('/', async (req, res) => {
@@ -66,7 +76,9 @@ leadsRouter.get('/', async (req, res) => {
   if (!sort) {
     return res.status(400).json({ error: `invalid sort: ${query.sort} (use one of ${SORT_FIELDS.join(', ')}, prefix - for descending)` });
   }
-  const filter = { ...buildLeadFilter(query), ...nullsLast(sort) };
+  const base = buildLeadFilter(query);
+  if (!base) return res.status(400).json({ error: badLocation(query.location) });
+  const filter = { ...base, ...nullsLast(sort) };
   const leads = await Lead.find(filter)
     .sort(sort)
     .limit(Math.min(Number(query.limit) || 200, 1000));
@@ -80,8 +92,11 @@ leadsRouter.get('/export', async (req, res) => {
     return res.status(400).json({ error: `invalid sort: ${query.sort} (use one of ${SORT_FIELDS.join(', ')}, prefix - for descending)` });
   }
 
+  const base = buildLeadFilter(query);
+  if (!base) return res.status(400).json({ error: badLocation(query.location) });
+
   const [leads, sections] = await Promise.all([
-    Lead.find({ ...buildLeadFilter(query), ...nullsLast(sort) }).sort(sort).limit(5000).lean(),
+    Lead.find({ ...base, ...nullsLast(sort) }).sort(sort).limit(5000).lean(),
     Section.find().lean(),
   ]);
 
@@ -132,6 +147,30 @@ leadsRouter.delete('/stale', async (req, res) => {
   const { filter, days } = staleFilter(req.query as Record<string, string>);
   const { deletedCount } = await Lead.deleteMany(filter);
   res.json({ days, deleted: deletedCount });
+});
+
+/** Same cap as the list endpoint: you can only select what one page can show. */
+export const BULK_DELETE_MAX = 1000;
+
+/**
+ * Deletes the leads ticked in the table. Body: `{ ids: ["…", "…"] }` →
+ * `{ deleted: 2 }`. Ids that no longer exist are skipped, not an error, so a
+ * double-click or a stale tab just reports a smaller count.
+ */
+leadsRouter.post('/bulk-delete', async (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array' });
+  }
+  if (ids.length > BULK_DELETE_MAX) {
+    return res.status(400).json({ error: `at most ${BULK_DELETE_MAX} ids per request` });
+  }
+  const bad = ids.filter((id) => typeof id !== 'string' || !mongoose.isValidObjectId(id));
+  if (bad.length > 0) {
+    return res.status(400).json({ error: `invalid lead id: ${String(bad[0])}` });
+  }
+  const { deletedCount } = await Lead.deleteMany({ _id: { $in: [...new Set(ids as string[])] } });
+  res.json({ deleted: deletedCount });
 });
 
 leadsRouter.get('/:id', async (req, res) => {

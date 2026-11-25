@@ -1,11 +1,10 @@
 import type { RawLead } from '../scrapers/types.js';
-import { scoreLead } from './score.js';
+import { scoreLead, type MatchRule, type ScoreResult } from './score.js';
 
 /** Minimal shape the classifier needs — keeps it testable without Mongoose. */
-export interface SectionRule {
+export interface SectionRule extends MatchRule {
   _id: unknown;
   name: string;
-  keywords: string[];
   order: number;
 }
 
@@ -22,9 +21,30 @@ export interface ClassifyOpts {
 }
 
 /**
- * Assigns a lead to the section whose keywords it matches most strongly.
+ * When a section names roles, a lead whose title names none of them needs this
+ * many distinct keywords in its title/body to still count — so "Paralegal" with
+ * "API" somewhere in the company blurb stays out, while "Software Engineer" with
+ * "Node.js, TypeScript, Redis" in the body gets in.
+ */
+export const MIN_TEXT_HITS_WITHOUT_ROLE = 3;
+
+/**
+ * Does this lead belong in this section at all?
+ * - an exclude word in the title (and none of the section's keywords there) → no
+ * - section with role names → a role in the title, or ≥3 keywords in title/body
+ * - plain keyword section → at least one keyword in title/body (tag-only hits
+ *   don't count: RemoteOK tags unrelated jobs "marketing" or "node")
+ */
+function qualifies(section: SectionRule, r: ScoreResult): boolean {
+  if (r.excluded) return false;
+  if (section.titleKeywords?.length) return r.roleHit || r.textHits >= MIN_TEXT_HITS_WITHOUT_ROLE;
+  return r.textHits > 0;
+}
+
+/**
+ * Assigns a lead to the qualifying section it matches most strongly.
  *
- * Nothing is ever rejected: a lead matching no section's keywords returns
+ * Nothing is ever rejected: a lead qualifying for no section returns
  * `sectionId: null` (Unsorted) and is still scored, so the Unsorted pile stays
  * ranked and browsable rather than becoming a dumping ground.
  *
@@ -36,12 +56,12 @@ export function classify(
   sections: SectionRule[],
   opts: ClassifyOpts,
 ): Classification {
-  let best: { section: SectionRule; result: ReturnType<typeof scoreLead> } | null = null;
+  let best: { section: SectionRule; result: ScoreResult } | null = null;
 
   for (const section of sections) {
-    if (!section.keywords?.length) continue;
-    const result = scoreLead(lead, section.keywords, opts);
-    if (result.keywordWeight <= 0) continue;
+    if (!section.keywords?.length && !section.titleKeywords?.length) continue;
+    const result = scoreLead(lead, section, opts);
+    if (!qualifies(section, result)) continue;
     if (
       !best ||
       result.keywordWeight > best.result.keywordWeight ||
@@ -54,7 +74,7 @@ export function classify(
   if (!best) {
     // Unsorted: still scored on the section-independent components so the pile
     // ranks by freshness, budget and reachability instead of arriving as noise.
-    const result = scoreLead(lead, [], opts);
+    const result = scoreLead(lead, { keywords: [] }, opts);
     return { sectionId: null, score: result.score, matchedKeywords: [] };
   }
 
@@ -71,6 +91,6 @@ export function scoreWithinSection(
   section: SectionRule | null,
   opts: ClassifyOpts,
 ): { score: number; matchedKeywords: string[] } {
-  const result = scoreLead(lead, section?.keywords ?? [], opts);
+  const result = scoreLead(lead, section ?? { keywords: [] }, opts);
   return { score: result.score, matchedKeywords: result.matchedKeywords };
 }

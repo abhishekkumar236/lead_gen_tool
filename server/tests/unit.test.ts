@@ -63,7 +63,7 @@ describe('scoreLead', () => {
     title: 'Need Node.js freelancer',
     description: 'Contract work on a React + MongoDB app. Budget $3000.',
   };
-  const keywords = ['node', 'react', 'mongodb', 'vue'];
+  const keywords = { keywords: ['node', 'react', 'mongodb', 'vue'] };
 
   it('scores keyword matches and reports them', () => {
     const r = scoreLead(base, keywords, { hasEmail: true, budgetText: '$3000' });
@@ -97,7 +97,7 @@ describe('scoreLead', () => {
         title: 'Retail Store Associate',
         description: 'We are interested in enthusiastic staff. Follow local laws. Capital city studio.',
       },
-      ['rest', 'aws', 'api', 'node'],
+      { keywords: ['rest', 'aws', 'api', 'node'] },
       { hasEmail: false, budgetText: '' },
     );
     expect(retail.matchedKeywords).toEqual([]);
@@ -107,7 +107,7 @@ describe('scoreLead', () => {
     const mk = (over: Partial<RawLeadLike>) =>
       scoreLead(
         { source: 'remoteok', sourceId: '3', title: 'Associate', description: 'general work', ...over } as never,
-        ['node'],
+        { keywords: ['node'] },
         { hasEmail: false, budgetText: '' },
       ).score;
     const inTitle = mk({ title: 'Node developer' });
@@ -120,6 +120,12 @@ describe('scoreLead', () => {
   it('matches keywords containing punctuation', () => {
     expect(matchesKeyword('we use node.js here', 'node.js')).toBe(true);
     expect(matchesKeyword('nodejsx thing', 'node.js')).toBe(false);
+  });
+
+  it('matches a plain plural but still not inside longer words', () => {
+    expect(matchesKeyword('public APIs', 'api')).toBe(true);
+    expect(matchesKeyword('apiary visits', 'api')).toBe(false);
+    expect(matchesKeyword('local laws', 'aws')).toBe(false);
   });
 
   it('stays within 0-100', () => {

@@ -16,7 +16,12 @@ export interface RawLead {
 
 export type Fetcher = typeof fetch;
 
+export interface ScrapeContext {
+  /** Every section's searchQueries; only sources with a search API use them. */
+  queries: string[];
+}
+
 export interface Scraper {
   source: LeadSource;
-  run(fetcher: Fetcher): Promise<RawLead[]>;
+  run(fetcher: Fetcher, ctx?: ScrapeContext): Promise<RawLead[]>;
 }

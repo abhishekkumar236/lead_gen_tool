@@ -30,7 +30,7 @@ sectionsRouter.get('/', async (_req, res) => {
 });
 
 sectionsRouter.post('/', async (req, res) => {
-  const { name, keywords, color } = req.body ?? {};
+  const { name, keywords, titleKeywords, excludeKeywords, searchQueries, color } = req.body ?? {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
   const parsed = parseKeywords(keywords);
   if (parsed.length === 0) {
@@ -43,6 +43,9 @@ sectionsRouter.post('/', async (req, res) => {
   const section = await Section.create({
     name: String(name).trim(),
     keywords: parsed,
+    titleKeywords: parseKeywords(titleKeywords),
+    excludeKeywords: parseKeywords(excludeKeywords),
+    searchQueries: parseKeywords(searchQueries),
     color: color ? String(color) : undefined,
     order,
   });
@@ -51,7 +54,8 @@ sectionsRouter.post('/', async (req, res) => {
 });
 
 sectionsRouter.put('/:id', async (req, res) => {
-  const { name, keywords, color, order } = req.body ?? {};
+  const { name, keywords, titleKeywords, excludeKeywords, searchQueries, color, order } =
+    req.body ?? {};
   const section = await Section.findById(req.params.id);
   if (!section) return res.status(404).json({ error: 'section not found' });
 
@@ -65,6 +69,10 @@ sectionsRouter.put('/:id', async (req, res) => {
     if (parsed.length === 0) return res.status(400).json({ error: 'at least one keyword required' });
     section.keywords = parsed;
   }
+  // Optional lists: an empty value clears them.
+  if (titleKeywords !== undefined) section.titleKeywords = parseKeywords(titleKeywords);
+  if (excludeKeywords !== undefined) section.excludeKeywords = parseKeywords(excludeKeywords);
+  if (searchQueries !== undefined) section.searchQueries = parseKeywords(searchQueries);
   if (color !== undefined) section.color = String(color);
   if (order !== undefined) section.order = Number(order);
 

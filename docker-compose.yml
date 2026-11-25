@@ -1,16 +1,3 @@
-# LeadForge — the whole stack in Docker.
-#
-#   docker compose up -d --build     start everything → http://localhost:8090
-#
-# Port 8090 because the poker stack's dashboard already holds 8080. Override with
-# LEADFORGE_PORT=9000 docker compose up -d
-#   docker compose logs -f server    watch the API
-#   docker compose down              stop (your leads are kept)
-#   docker compose down -v           stop AND erase the database
-#
-# Only the UI is published to the host. The API and MongoDB talk over the
-# internal compose network; nothing else on your machine can reach them.
-
 services:
   mongo:
     image: mongo:7
@@ -31,8 +18,6 @@ services:
       - MONGO_URI=mongodb://mongo:27017/leadforge
       - FETCH_TIMEOUT_MS=20000
     depends_on:
-      # Wait for mongo to answer pings, not merely to start — mongoose fails
-      # the process on a refused first connection.
       mongo:
         condition: service_healthy
     healthcheck:

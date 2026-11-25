@@ -9,8 +9,16 @@ export async function loadSectionRules(): Promise<SectionRule[]> {
     _id: s._id,
     name: s.name,
     keywords: s.keywords ?? [],
+    titleKeywords: s.titleKeywords ?? [],
+    excludeKeywords: s.excludeKeywords ?? [],
     order: s.order ?? 0,
   }));
+}
+
+/** Every section's search phrases, deduped, for sources that take a query. */
+export async function loadSearchQueries(): Promise<string[]> {
+  const sections = await Section.find().sort('order').select('searchQueries').lean();
+  return [...new Set(sections.flatMap((s) => s.searchQueries ?? []))];
 }
 
 /** Lead documents carry every field the scorer reads; this just narrows the type. */

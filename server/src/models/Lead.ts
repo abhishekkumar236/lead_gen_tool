@@ -11,7 +11,14 @@ export const LEAD_STATUSES = [
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
-export const LEAD_SOURCES = ['hn', 'reddit', 'remoteok', 'remotive'] as const;
+export const LEAD_SOURCES = [
+  'hn',
+  'reddit',
+  'remoteok',
+  'remotive',
+  'himalayas',
+  'weworkremotely',
+] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 const noteSchema = new Schema(

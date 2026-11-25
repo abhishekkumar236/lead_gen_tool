@@ -11,6 +11,12 @@ const sectionSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     keywords: { type: [String], default: [] },
+    // Role names matched in the title only; see MatchRule in services/score.ts.
+    titleKeywords: { type: [String], default: [] },
+    // Title words that mean "not this kind of job".
+    excludeKeywords: { type: [String], default: [] },
+    // Phrases sent to sources that support search (Himalayas), e.g. "node.js".
+    searchQueries: { type: [String], default: [] },
     color: { type: String, default: '#4f8ef7' },
     order: { type: Number, default: 0 },
   },

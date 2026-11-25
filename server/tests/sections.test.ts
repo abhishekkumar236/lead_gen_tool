@@ -94,6 +94,29 @@ describe('sections API', () => {
     devId = res.body.section._id;
   });
 
+  it('stores role, exclude and search lists; an empty value clears one on edit', async () => {
+    const created = await request(app).post('/api/sections').send({
+      name: 'Lists',
+      keywords: 'node',
+      titleKeywords: 'Backend, Full Stack',
+      excludeKeywords: ['rails'],
+      searchQueries: 'node.js',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.section).toMatchObject({
+      titleKeywords: ['backend', 'full stack'],
+      excludeKeywords: ['rails'],
+      searchQueries: ['node.js'],
+    });
+
+    const id = created.body.section._id;
+    const edited = await request(app).put(`/api/sections/${id}`).send({ excludeKeywords: '' });
+    expect(edited.body.section.excludeKeywords).toEqual([]);
+    expect(edited.body.section.titleKeywords).toEqual(['backend', 'full stack']); // untouched
+
+    await request(app).delete(`/api/sections/${id}`);
+  });
+
   it('rejects a section with no keywords and a duplicate name', async () => {
     expect((await request(app).post('/api/sections').send({ name: 'Empty', keywords: '' })).status).toBe(400);
     expect(

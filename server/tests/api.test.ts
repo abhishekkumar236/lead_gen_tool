@@ -73,6 +73,10 @@ describe('scrape', () => {
     expect(bySource.reddit.inserted).toBe(1);
     expect(bySource.remoteok.inserted).toBe(1);
     expect(bySource.remotive.inserted).toBe(1);
+    expect(bySource.weworkremotely.inserted).toBe(2);
+    // No section has search queries in this suite, so the search source stays idle.
+    expect(bySource.himalayas).toMatchObject({ fetched: 0, inserted: 0 });
+    expect(res.body.results.filter((r: any) => r.error)).toEqual([]);
 
     // contact email auto-extracted from post body
     const gig = await Lead.findOne({ source: 'hn', sourceId: '41000010' });
@@ -88,7 +92,7 @@ describe('scrape', () => {
     const hn2 = res2.body.results.find((r: any) => r.source === 'hn');
     expect(hn2.inserted).toBe(0);
     expect(hn2.updated).toBe(2);
-    expect(await Lead.countDocuments()).toBe(5);
+    expect(await Lead.countDocuments()).toBe(7);
   });
 
   it('re-scrape heals a stale invalid email but keeps a manual one', async () => {
@@ -146,6 +150,45 @@ describe('leads', () => {
     const ascDates = asc.body.map((l: any) => l.postedAt);
     expect(ascDates.every(Boolean)).toBe(true); // undated dropped, not leading
     expect([...ascDates].sort()).toEqual(ascDates);
+  });
+
+  it('filters by location: Delhi NCR, and anything open to India', async () => {
+    const mk = (sourceId: string, title: string, location = '') =>
+      Lead.create({ source: 'himalayas', sourceId, title, location });
+    await Promise.all([
+      mk('loc-gurgaon', 'Backend Engineer', 'Gurugram, Haryana'),
+      mk('loc-noida', 'Node.js Developer', 'Noida'),
+      // HN keeps the location in the title's first line, not in `location`.
+      mk('loc-hn-delhi', 'Acme | Senior Backend Engineer | New Delhi | ONSITE'),
+      mk('loc-india', 'Product Marketing Manager', 'India, Singapore'),
+      mk('loc-blr', 'Full Stack Developer', 'Bengaluru'),
+      mk('loc-world', 'Senior Node.js Engineer', 'Worldwide'),
+      mk('loc-anywhere', 'Growth Lead', 'Anywhere in the World'),
+      mk('loc-us', 'Backend Engineer', 'USA Only'),
+      // Look-alikes that must not match.
+      mk('loc-indiana', 'Backend Engineer', 'Indianapolis, Indiana'),
+      mk('loc-global-title', 'Global Partnerships Lead', 'Canada'),
+    ]);
+    const ids = async (location: string) => {
+      const res = await request(app).get(`/api/leads?location=${location}&limit=1000`);
+      expect(res.status).toBe(200);
+      return res.body
+        .map((l: any) => l.sourceId)
+        .filter((s: string) => s.startsWith('loc-'))
+        .sort();
+    };
+
+    expect(await ids('ncr')).toEqual(['loc-gurgaon', 'loc-hn-delhi', 'loc-noida']);
+    expect(await ids('india')).toEqual(
+      ['loc-anywhere', 'loc-blr', 'loc-gurgaon', 'loc-hn-delhi', 'loc-india', 'loc-noida', 'loc-world'],
+    );
+
+    // Unknown value: rejected on the list and the export alike.
+    expect((await request(app).get('/api/leads?location=mars')).status).toBe(400);
+    expect((await request(app).get('/api/leads/export?location=mars')).status).toBe(400);
+    expect((await request(app).get('/api/leads/export?location=ncr')).status).toBe(200);
+
+    await Lead.deleteMany({ sourceId: /^loc-/ });
   });
 
   it('rejects an unknown sort field', async () => {
@@ -225,6 +268,51 @@ describe('leads', () => {
 
     await Lead.deleteMany({ sourceId: /^p-/ });
     await request(app).delete(`/api/sections/${sectionId}`);
+  });
+
+  it('bulk-deletes exactly the selected leads, whatever their status', async () => {
+    const mk = (sourceId: string, extra: Record<string, unknown> = {}) =>
+      Lead.create({ source: 'hn', sourceId, title: `bulk ${sourceId}`, ...extra });
+    const [a, b, keep] = await Promise.all([
+      mk('b-a'),
+      mk('b-b', { status: 'pitched', notes: [{ text: 'sent', at: new Date() }] }),
+      mk('b-keep'),
+    ]);
+    const missing = String(new mongoose.Types.ObjectId());
+
+    const res = await request(app)
+      .post('/api/leads/bulk-delete')
+      // a repeated id and one that's already gone are tolerated
+      .send({ ids: [String(a._id), String(b._id), String(a._id), missing] });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deleted: 2 });
+    expect(await Lead.findById(a._id)).toBeNull();
+    expect(await Lead.findById(b._id)).toBeNull();
+    expect(await Lead.findById(keep._id)).not.toBeNull();
+
+    // Deleting the same selection again (double-click, stale tab) is harmless.
+    const again = await request(app).post('/api/leads/bulk-delete').send({ ids: [String(a._id)] });
+    expect(again.body).toEqual({ deleted: 0 });
+
+    await Lead.deleteMany({ sourceId: /^b-/ });
+  });
+
+  it('rejects a bulk delete with no ids, bad ids, or too many ids — deleting nothing', async () => {
+    const before = await Lead.countDocuments();
+    const valid = String(new mongoose.Types.ObjectId());
+    const cases = [
+      {},
+      { ids: [] },
+      { ids: valid },
+      { ids: [valid, 'not-an-id'] },
+      { ids: [valid, 42] },
+      { ids: Array.from({ length: 1001 }, () => valid) },
+    ];
+    for (const body of cases) {
+      const res = await request(app).post('/api/leads/bulk-delete').send(body);
+      expect(res.status, JSON.stringify(body).slice(0, 60)).toBe(400);
+    }
+    expect(await Lead.countDocuments()).toBe(before);
   });
 
   it('404s on missing lead, 500s contained on malformed id', async () => {

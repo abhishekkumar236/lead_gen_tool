@@ -188,7 +188,7 @@ label input, label select, label textarea { margin-top: 5px; color: var(--text);
 .source-counts { display: flex; gap: 20px; }
 .source-count { display: flex; align-items: center; gap: 7px; }
 
-.filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px; }
+.filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap: 10px; }
 
 .table-wrap { padding: 0; overflow-x: auto; }
 .lead-table { width: 100%; border-collapse: collapse; }
@@ -201,6 +201,12 @@ label input, label select, label textarea { margin-top: 5px; color: var(--text);
 .lead-table tbody tr { cursor: pointer; }
 .lead-table tbody tr:active { cursor: grabbing; }
 .lead-table tbody tr:hover { background: var(--panel-2); }
+/* multi-select */
+.lead-table .cell-check { width: 1%; padding-right: 4px; cursor: default; }
+.lead-table .cell-check input { width: 16px; height: 16px; margin: 2px 0 0; cursor: pointer; accent-color: var(--accent); }
+.lead-table tbody tr.row-checked { background: rgba(79,142,247,.10); }
+.selection-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 12px; border-color: var(--accent); }
+.selection-actions { margin-left: auto; display: flex; gap: 8px; }
 .cell-title { max-width: 520px; }
 
 .score { display: inline-block; min-width: 32px; text-align: center; padding: 3px 7px; border-radius: 6px; font-weight: 700; font-size: 12px; color: #fff; }
@@ -290,6 +296,7 @@ label input, label select, label textarea { margin-top: 5px; color: var(--text);
 /* ─────────────── small dialog (new / edit section) ─────────────── */
 .dialog {
   width: 470px; max-width: 100%;
+  max-height: 90vh; overflow-y: auto; /* section dialog has five fields */
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 14px; padding: 22px;
   box-shadow: 0 24px 70px rgba(0,0,0,.55);

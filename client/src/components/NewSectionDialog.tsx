@@ -15,6 +15,11 @@ export default function NewSectionDialog({ onClose, onCreated, editing }: Props)
   const { reload } = useSections();
   const [name, setName] = useState(editing?.name ?? '');
   const [keywords, setKeywords] = useState((editing?.keywords ?? []).join(', '));
+  const [titleKeywords, setTitleKeywords] = useState((editing?.titleKeywords ?? []).join(', '));
+  const [excludeKeywords, setExcludeKeywords] = useState(
+    (editing?.excludeKeywords ?? []).join(', '),
+  );
+  const [searchQueries, setSearchQueries] = useState((editing?.searchQueries ?? []).join(', '));
   const [color, setColor] = useState(editing?.color ?? SWATCHES[0]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -32,7 +37,14 @@ export default function NewSectionDialog({ onClose, onCreated, editing }: Props)
         editing ? `/api/sections/${editing._id}` : '/api/sections',
         {
           method: editing ? 'PUT' : 'POST',
-          body: JSON.stringify({ name: name.trim(), keywords, color }),
+          body: JSON.stringify({
+            name: name.trim(),
+            keywords,
+            titleKeywords,
+            excludeKeywords,
+            searchQueries,
+            color,
+          }),
         },
       );
       setMoved(res.reclassified.moved);
@@ -65,15 +77,54 @@ export default function NewSectionDialog({ onClose, onCreated, editing }: Props)
         </label>
 
         <label>
-          Keywords
-          <input
-            placeholder="gtm, marketing, product marketing, contract"
+          Skill keywords
+          <textarea
+            rows={3}
+            placeholder="node, typescript, redis, rabbitmq"
             value={keywords}
             onChange={(e) => setKeywords(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
           />
         </label>
-        <div className="muted small">Comma-separated. Matched as whole words, case-insensitive.</div>
+        <div className="muted small">
+          Searched in the title and body. Comma- or line-separated, whole words, case-insensitive;
+          a plural also matches ("api" finds "APIs").
+        </div>
+
+        <label>
+          Role names in the title <span className="muted">(optional)</span>
+          <textarea
+            rows={2}
+            placeholder="backend, full stack, product marketing"
+            value={titleKeywords}
+            onChange={(e) => setTitleKeywords(e.target.value)}
+          />
+        </label>
+        <div className="muted small">
+          When set, a lead needs one of these in its title — or 3+ skill keywords in its body.
+        </div>
+
+        <label>
+          Exclude if the title says <span className="muted">(optional)</span>
+          <textarea
+            rows={2}
+            placeholder="rails, devops, account executive"
+            value={excludeKeywords}
+            onChange={(e) => setExcludeKeywords(e.target.value)}
+          />
+        </label>
+        <div className="muted small">
+          Ignored when the title also names one of your skill keywords ("Node.js / Python" stays).
+        </div>
+
+        <label>
+          Search terms for job sites <span className="muted">(optional)</span>
+          <input
+            placeholder="node.js, backend engineer"
+            value={searchQueries}
+            onChange={(e) => setSearchQueries(e.target.value)}
+          />
+        </label>
+        <div className="muted small">Sent to Himalayas on each scrape. Keep it to a few.</div>
 
         <div className="swatches">
           {SWATCHES.map((c) => (

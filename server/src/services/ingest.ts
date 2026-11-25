@@ -3,7 +3,7 @@ import { getScrapers } from '../scrapers/index.js';
 import type { Fetcher, RawLead } from '../scrapers/types.js';
 import { extractBudget, extractEmails, isPlausible } from './normalize.js';
 import { classify, scoreWithinSection, type SectionRule } from './classify.js';
-import { loadSectionRules } from './reclassify.js';
+import { loadSearchQueries, loadSectionRules } from './reclassify.js';
 import { config } from '../config.js';
 
 export interface SourceResult {
@@ -27,12 +27,13 @@ export async function runScrape(
   fetcher: Fetcher = fetch,
 ): Promise<SourceResult[]> {
   const rules = await loadSectionRules();
+  const ctx = { queries: await loadSearchQueries() };
   const wrapped = timeoutFetcher(fetcher);
 
   const results = await Promise.all(
     getScrapers(sources).map(async (scraper): Promise<SourceResult> => {
       try {
-        const raw = await scraper.run(wrapped);
+        const raw = await scraper.run(wrapped, ctx);
         let inserted = 0;
         let updated = 0;
         for (const lead of raw) {
